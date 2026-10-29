@@ -110,9 +110,9 @@ def content_words(text):
 def has_negation(text):
     words = set(tokenize(text))
     return bool(words.intersection(NEGATION_WORDS))
-def calculate
 
-_similarity(claim, evidence):
+
+def calculate_similarity(claim, evidence):
     claim_words = content_words(claim)
     evidence_words = content_words(evidence)
 
