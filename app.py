@@ -125,3 +125,4 @@ with st.expander("ℹ️ About VeriShield AI"):
     st.write("VeriShield AI compares a claim with a small local evidence collection, retrieves live web search snippets, and uses an OpenAI model to summarize how those snippets relate to the claim.")
     st.write("Search snippets may be incomplete or misleading. The AI can make mistakes and does not independently guarantee that a claim is true or false.")
     st.write("Always inspect original sources and context. This is an educational prototype, not a substitute for professional advice.")
+
