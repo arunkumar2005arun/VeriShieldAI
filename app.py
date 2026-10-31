@@ -1,3 +1,4 @@
+
 import os
 import html
 import time
@@ -15,13 +16,16 @@ from google import genai
 
 load_dotenv(override=True)
 
+
 def get_gemini_api_key():
     """Read the key from Streamlit Cloud Secrets or local .env."""
     try:
         secret_key = st.secrets.get("GEMINI_API_KEY", "")
     except Exception:
         secret_key = ""
+
     return (secret_key or os.getenv("GEMINI_API_KEY", "")).strip()
+
 
 GEMINI_API_KEY = get_gemini_api_key()
 
@@ -243,14 +247,21 @@ def search_evidence(claim):
                         max_results=5
                     )
 
-                    count = 0
+                    if not search_results:
+                        continue
 
                     for item in search_results:
-                        count += 1
-                        url = item.get("href", "").strip()
+                        if not isinstance(item, dict):
+                            continue
 
-                        if url and url not in seen_urls:
+                        url = (item.get("href") or "").strip()
+
+                        if (
+                            url.startswith(("http://", "https://"))
+                            and url not in seen_urls
+                        ):
                             seen_urls.add(url)
+
                             results.append({
                                 "title": item.get("title") or "Untitled",
                                 "body": item.get("body") or "No description available",
@@ -307,6 +318,7 @@ def analyze_claim(claim, evidence):
         client = genai.Client(api_key=GEMINI_API_KEY)
 
         evidence_text = ""
+
         for index, item in enumerate(evidence, 1):
             evidence_text += (
                 f"\nSource {index}\n"
@@ -364,7 +376,10 @@ EXPLANATION: concise explanation with relevant limitations
                 last_error = error
                 error_text = str(error)
 
-                if "429" in error_text or "RESOURCE_EXHAUSTED" in error_text:
+                if (
+                    "429" in error_text
+                    or "RESOURCE_EXHAUSTED" in error_text
+                ):
                     raise Exception(
                         "Gemini free-tier quota has been reached. "
                         "Please try again after the quota resets."
@@ -381,12 +396,25 @@ EXPLANATION: concise explanation with relevant limitations
                 time.sleep(2 ** (attempt + 1))
 
         if response is None:
-            raise last_error or Exception("Gemini returned no response.")
+            raise last_error or Exception(
+                "Gemini returned no response."
+            )
 
         answer = (response.text or "").strip()
 
-        verdict = "UNVERIFIED"
-        confidence = 0
+        if not answer:
+            return {
+                "success": False,
+                "verdict": None,
+                "confidence": None,
+                "explanation": (
+                    "Gemini returned an empty response. "
+                    "No verdict was generated."
+                )
+            }
+
+        verdict = None
+        confidence = None
         explanation_lines = []
         reading_explanation = False
 
@@ -396,8 +424,10 @@ EXPLANATION: concise explanation with relevant limitations
 
             if upper.startswith("VERDICT:"):
                 candidate = stripped.split(":", 1)[1].strip().upper()
+
                 if candidate in {"SUPPORTED", "REFUTED", "UNVERIFIED"}:
                     verdict = candidate
+
                 reading_explanation = False
 
             elif upper.startswith("CONFIDENCE:"):
@@ -406,23 +436,56 @@ EXPLANATION: concise explanation with relevant limitations
                     .strip()
                     .replace("%", "")
                 )
+
                 try:
-                    confidence = max(0, min(100, int(raw_confidence)))
+                    confidence = int(raw_confidence)
                 except ValueError:
-                    confidence = 0
+                    confidence = None
+
                 reading_explanation = False
 
             elif upper.startswith("EXPLANATION:"):
-                explanation_lines.append(stripped.split(":", 1)[1].strip())
+                explanation_lines.append(
+                    stripped.split(":", 1)[1].strip()
+                )
                 reading_explanation = True
 
             elif reading_explanation and stripped:
                 explanation_lines.append(stripped)
 
+        # Validate verdict
+        if verdict not in {"SUPPORTED", "REFUTED", "UNVERIFIED"}:
+            return {
+                "success": False,
+                "verdict": None,
+                "confidence": None,
+                "explanation": (
+                    "Gemini returned an invalid or incomplete verdict. "
+                    "No verdict was generated."
+                )
+            }
+
+        # Validate confidence
+        if (
+            not isinstance(confidence, int)
+            or not 0 <= confidence <= 100
+        ):
+            return {
+                "success": False,
+                "verdict": None,
+                "confidence": None,
+                "explanation": (
+                    "Gemini returned an invalid confidence value. "
+                    "No confidence score was generated."
+                )
+            }
+
         explanation = "\n".join(explanation_lines).strip()
 
         if not explanation:
-            explanation = "The AI did not provide a detailed explanation."
+            explanation = (
+                "The AI did not provide a detailed explanation."
+            )
 
         return {
             "success": True,
@@ -436,7 +499,9 @@ EXPLANATION: concise explanation with relevant limitations
             "success": False,
             "verdict": None,
             "confidence": None,
-            "explanation": f"Gemini AI analysis could not be completed: {error}"
+            "explanation": (
+                f"Gemini AI analysis could not be completed: {error}"
+            )
         }
 
 
@@ -510,7 +575,9 @@ def dashboard():
                         "claim": claim,
                         "evidence": evidence,
                         "analysis": analysis,
-                        "time": datetime.now().strftime("%d %b %Y, %I:%M %p")
+                        "time": datetime.now().strftime(
+                            "%d %b %Y, %I:%M %p"
+                        )
                     }
 
                     st.session_state.result = result
@@ -524,7 +591,10 @@ def dashboard():
                                 "time": result["time"]
                             }
                         )
-                        st.session_state.history = st.session_state.history[:20]
+
+                        st.session_state.history = (
+                            st.session_state.history[:20]
+                        )
 
                         status.update(
                             label="Verification completed!",
@@ -563,11 +633,13 @@ def dashboard():
 
             with col1:
                 confidence_value = analysis.get("confidence")
+
                 confidence_display = (
                     f"{confidence_value}%"
                     if confidence_value is not None
                     else "Not available"
                 )
+
                 st.markdown(
                     f"""
                     <div class="metric-card">
@@ -588,12 +660,15 @@ def dashboard():
                     """,
                     unsafe_allow_html=True
                 )
+
         else:
             st.error("AI ANALYSIS NOT COMPLETED")
+
             st.caption(
                 "No verdict or confidence score was generated. "
                 "The sources below are provided for manual review."
             )
+
             st.markdown(
                 f"""
                 <div class="metric-card">
@@ -608,13 +683,18 @@ def dashboard():
             '<div class="section-title">Claim Details</div>',
             unsafe_allow_html=True
         )
+
         st.info(result["claim"])
 
         st.markdown(
             '<div class="section-title">AI Explanation</div>',
             unsafe_allow_html=True
         )
-        safe_explanation = html.escape(analysis["explanation"]).replace("\n", "<br>")
+
+        safe_explanation = html.escape(
+            analysis["explanation"]
+        ).replace("\n", "<br>")
+
         st.markdown(
             f'<div class="result-card">{safe_explanation}</div>',
             unsafe_allow_html=True
@@ -648,6 +728,7 @@ def dashboard():
             st.warning("No evidence sources were found.")
 
         st.caption(f"Checked on: {result['time']}")
+
         st.caption(
             "AI-generated assessments may contain errors. "
             "Always review original sources before relying on a verdict."
@@ -694,6 +775,7 @@ def dashboard():
 def evidence_library():
 
     st.title("📚 Evidence Library")
+
     st.write(
         "Review the claims you have previously submitted for verification."
     )
