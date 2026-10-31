@@ -1,3 +1,4 @@
 streamlit
-openai
 ddgs
+python-dotenv
+google-genai
