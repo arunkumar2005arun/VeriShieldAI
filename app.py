@@ -223,10 +223,11 @@ with st.sidebar:
 # --------------------------------------------------
 
 def search_evidence(claim):
-    """Search the web for evidence related to a claim."""
+    """Search the web and report diagnostic details."""
 
     results = []
     seen_urls = set()
+    errors = []
 
     search_queries = [
         claim,
@@ -236,31 +237,39 @@ def search_evidence(claim):
     try:
         with DDGS() as ddgs:
             for query in search_queries:
-                search_results = ddgs.text(
-                    query,
-                    max_results=5
-                )
+                try:
+                    search_results = ddgs.text(
+                        query,
+                        max_results=5
+                    )
 
-                for item in search_results:
-                    url = item.get("href", "").strip()
+                    count = 0
 
-                    if url and url not in seen_urls:
-                        seen_urls.add(url)
+                    for item in search_results:
+                        count += 1
+                        url = item.get("href", "").strip()
 
-                        results.append({
-                            "title": item.get("title") or "Untitled",
-                            "body": item.get("body") or "No description available",
-                            "url": url
-                        })
+                        if url and url not in seen_urls:
+                            seen_urls.add(url)
+                            results.append({
+                                "title": item.get("title") or "Untitled",
+                                "body": item.get("body") or "No description available",
+                                "url": url
+                            })
 
-                        if len(results) >= 5:
-                            break
+                    if len(results) >= 5:
+                        break
 
-                if len(results) >= 5:
-                    break
+                except Exception as error:
+                    errors.append(f"{query}: {error}")
 
     except Exception as error:
-        st.error(f"Web search failed: {error}")
+        errors.append(f"Search connection error: {error}")
+
+    if errors:
+        st.warning("Search diagnostic: " + " | ".join(errors))
+
+    st.info(f"Search diagnostic: Found {len(results)} usable sources.")
 
     return results
 
